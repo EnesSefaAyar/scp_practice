@@ -1,0 +1,32 @@
+
+
+# Load packages
+```{r}
+BiocManager::install("scp")
+library("scp")
+library("dplyr")
+library("ggplot2")
+library("limma")
+library("scater")
+library("patchwork")
+
+```
+
+# Example Data subset
+```{r}
+scp_subset <- read.csv("~/scp_practice/data/scp_subset.csv", check.names = FALSE)
+scp_subset
+
+coldata_subset <- read.csv("~/scp_practice/data/coldata_subset.csv", row.names = "X")
+coldata_subset
+
+```
+
+# Build QFeatures Object
+```{r}
+
+
+```
+
+
+

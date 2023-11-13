@@ -1,0 +1,132 @@
+---
+title: "dataset"
+output: html_document
+date: "2023-10-04"
+---
+
+# Load packages
+
+```{r, message = FALSE, warning=FALSE}
+library("tidyverse")
+library("scp")
+```
+
+# Load files
+
+## CBIO data
+
+```{r}
+quant_cbio <- read.delim("../../isilon/data/SCPCBIO/sage/results_all/quant.cbio.tsv")
+id_cbio <- read.delim("../../isilon/data/SCPCBIO/sage/results_all/results.sage.cbio.tsv")
+```
+
+## GIGA data
+
+```{r}
+quant_giga <- read.delim("../202305_TIMS_TOF_GIGA/GIGA_6samples/quant.giga.tsv")
+id_giga <- read.delim("../202305_TIMS_TOF_GIGA/GIGA_6samples/results.sage.giga.tsv")
+```
+
+# Prepare data
+
+## Bind cbio and giga data
+
+```{r}
+quant <- rbind(quant_cbio, quant_giga)
+id <- rbind(id_cbio, id_giga)
+```
+
+## Remove temporary files
+
+```{r}
+rm(quant_giga)
+rm(quant_cbio)
+rm(id_giga)
+rm(id_cbio)
+```
+
+## Merge identification and quantification data
+
+```{r}
+## Merge
+sage_data <- merge(quant, id, 
+                   by.x = c("file", "scannr"), 
+                   by.y = c("filename", "scannr"))
+
+## Remove temporary files
+rm(quant)
+rm(id)
+```
+
+## Add variables
+
+```{r}
+# add key
+sage_data$.KEY <- paste(sage_data$file, sage_data$scannr, sep = ".")
+
+# add tmt channel name to quantitative columns
+colnames(sage_data)[4:19] <- paste0(c(126, rep(127:133, each = 2), 134),
+                                    rep(c("C", "N"), 8))
+
+# add run variable
+sage_data$run <- sub(".*_1_1_", "", sage_data$file)
+sage_data$run <- sub("^1", "GIGA_1", sage_data$run)
+sage_data$run <- sub("\\.mzML", "", sage_data$run)
+
+# add experiment batches
+sage_data$batch <- sub("_.*", "", sage_data$run)
+
+unique(sage_data$run)
+unique(sage_data$batch)
+```
+
+# Generate coldata
+
+```{r, message = FALSE}
+# import individual annotation files
+annotation_files <- 
+  dir("../../isilon/data/SCPCBIO/annotation/", 
+      full.names = TRUE)
+
+cbio_680_annotation <- read_csv2(annotation_files[grep("cbio680", annotation_files)])
+cbio_681_annotation <- read_csv2(annotation_files[grep("cbio681", annotation_files)])
+cbio_703_annotation <- read_csv2(annotation_files[grep("cbio703", annotation_files)])
+cbio_715_annotation <- read_csv2(annotation_files[grep("cbio715", annotation_files)])
+cbio_725_annotation <- read_csv2(annotation_files[grep("cbio725", annotation_files)])
+cbio_733_annotation <- read_csv2(annotation_files[grep("cbio733", annotation_files)])
+cbio_754_annotation <- read_csv2(annotation_files[grep("cbio754bis", annotation_files)])
+giga_annotation <-  read_csv2(annotation_files[grep("GIGA", annotation_files)])
+
+# combine individual annotations
+annotations <- 
+  rbind(cbio_680_annotation,
+        cbio_681_annotation,
+        cbio_703_annotation,
+        cbio_715_annotation,
+        cbio_725_annotation,
+        cbio_733_annotation,
+        cbio_754_annotation,
+        giga_annotation)
+
+table(annotations$run)
+```
+
+# Create QFeature object
+
+```{r}
+scp <- readSCP(featureData = sage_data,
+              colData = annotations,
+              channelCol = "channel",
+              batchCol = "run",
+              removeEmptyCols = TRUE,
+              sep = "_")
+
+scp
+```
+
+```{r}
+saveRDS(scp, "./data/scp.rds")
+```
+
+
+
