@@ -1,3 +1,8 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 
 
 # Load packages
@@ -22,9 +27,256 @@ coldata_subset
 
 ```
 
-# Build QFeatures Object
+# Build QFeatures Object (from subset)
 ```{r}
+(scp_subset <- readSCP(featureData = scp_subset,
+                       colData = coldata_subset,
+                       batchCol = "run",
+                       channelCol = "channel"))
 
+scp_subset[["CBIO725_10"]] ## Same as scp_subset[[1]]
+assay(scp_subset[["CBIO725_10"]])
+rowData(scp_subset[["CBIO725_10"]])
+colData(scp_subset)
+scp_subset$cell_type ## Same as colData(scp_subset)$cell_type
+```
+
+# Load real Qfeatures object
+```{r}
+scp <- readRDS("~/scp_practice/data/scp.rds")
+scp
+
+```
+
+# Missing Data
+```{r}
+# The zeroIsNA() function replaces zeros with NAs in every set.
+# sage software put zeros for missing data!!!
+scp <- zeroIsNA(scp, i = 1:length(scp))
+
+```
+
+# Quality Control
+```{r}
+## PSMs (Features) filtering
+
+scp <- filterFeatures(scp,
+                      ~ rank == 1 & # keep the sequences with the highest score.
+                       peptide_fdr < 0.01 & # Sufficient confidence
+                       label == 1) # Forward PSMs, that have a label of 1
+
+for (i in seq_along(scp)) {
+  # Extract rowData for each set
+  rd <- rowData(scp[[names(scp)[i]]])
+  # Create unique spectrum identifier .KEY
+  rd$.KEY <- paste(rd$file, rd$scannr)
+  # Create "chimeric" column, FALSE by default
+  rd$chimeric <- FALSE
+  # Change "chimeric" to TRUE for duplicated keys
+  rd$chimeric[rd$.KEY %in% rd$.KEY[duplicated(rd$.KEY)]] <- TRUE
+  # Store updated rowData
+  rowData(scp[[names(scp)[i]]]) <- rd
+}
+
+
+as.data.frame(head(rowData(scp[[1]]))[, c(".KEY", "peptide", "chimeric")])
+
+scp <- filterFeatures(scp,
+                      ~ !chimeric)
+
+table(scp$cell_type)
+
+# Sample to Carrier Ratio (SCR)
+scp <- computeSCR(scp,
+                  i = 1:length(scp),
+                  colvar = "cell_type",
+                  carrierPattern = "carrier",
+                  samplePattern = "THP1|THP1_dif|U937|U937_dif|mix",
+                  rowDataName = "MeanSCR")
+
+# Plot before filter based on SCR
+rbindRowData(scp, i = 1:length(scp)) |>
+  data.frame() |>
+  filter(batch == "GIGA") |>
+  ggplot(aes(x = MeanSCR, color = run)) +
+  geom_density() +
+  geom_vline(xintercept = 0.02,
+  lty = 2) +
+  geom_vline(xintercept = 1,
+  lty = 1)+
+  scale_x_log10()
+
+# Dashed line 1/50 (expected), solid line threshold (determined)
+scp <- filterFeatures(scp,
+                      ~ !is.na(MeanSCR) &
+                        MeanSCR < 1)
+
+## Cell Filtering
+table(scp$cell_type)
+
+scp <- subsetByColData(scp, !scp$cell_type %in% c("carrier", "empty"))
+table(scp$cell_type)
+
+for (i in names(scp)) {
+  # Extract log assay
+  logAssay <- log(assay(scp[[i]]))
+  # Compute median RI by cell
+  meds <- colMedians(logAssay, na.rm = TRUE, useNames = TRUE)
+  # Store median RI in colData.
+  colData(scp)[names(meds), "log_medianRI"] <- meds
+  
+}
+
+# Plot distribution per cell type
+colData(scp) |>
+  data.frame() |>
+  filter(batch == "CBIO715") |>
+  ggplot() +
+  aes(x = log_medianRI,
+      y = cell_type,
+      fill = cell_type) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha = 0.5) +
+  facet_wrap(~ batch) +
+  labs(fill = "Cell type",
+       y = "Cell type",
+       x = "Log median RI") +
+  geom_vline(xintercept = 7.7,
+          color = "red")
+
+scp <- medianCVperCell(scp,
+                       i = 1:length(scp),
+                       groupBy = "proteins",
+                       nobs = 3,
+                       norm = "div.median",
+                       colDataName = "medianCV")
+
+colData(scp) |>
+  data.frame() |>
+  filter(batch == "CBIO681") |>
+  ggplot() +
+  aes(x = medianCV,
+      y = cell_type,
+      fill = cell_type) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha = 0.5)+
+  facet_wrap(~batch)+
+  labs(fill = "Cell type",
+       y = "Cell type") +
+  geom_vline(xintercept = 0.79,
+             color = "red")
+
+scp <- countUniqueFeatures(scp,
+                           i = 1:length(scp),
+                           groupBy = "peptide",
+                           colDataName = "count")
+
+head(scp$count)
+
+scp |>
+  colData() |>
+  as.data.frame() |>
+  ggplot(aes(x = log_medianRI, y = count,
+             color = medianCV, shape = cell_type == "blank")) +
+  geom_point() +
+  scale_color_viridis_c() +
+  facet_wrap(~ batch, scales = "free") +
+  geom_vline(xintercept = c(7.77, 8.5, 7.69, 7.69, 8.08, 8.5, 7.39, NA),
+             lty = c(diag(1, 8, 8))) +
+  geom_hline(yintercept = 1250) +
+  scale_shape_manual(values = c(16, 21)) +
+  labs(shape = "Blank",
+       y = "Peptide numbers",
+       x = "Log median RI",
+       fill = "median CV") +
+  theme(legend.position = c(0.82, 0.13))
+
+filter_samples <-
+  (scp$batch == "CBIO680" & scp$log_medianRI > 7.77 &
+    scp$count > 1250 & scp$medianCV < 0.615) |
+  (scp$batch == "CBIO681" & scp$log_medianRI > 8.5 &
+    scp$count > 1250 & scp$medianCV < 0.79) |
+  (scp$batch == "CBIO703" & scp$log_medianRI > 7.69 &
+    scp$count > 1250 & scp$medianCV < 0.68) |
+  (scp$batch == "CBIO715" & scp$log_medianRI > 7.69 &
+    scp$count > 1250 & scp$medianCV < 0.62) |
+  (scp$batch == "CBIO725" & scp$log_medianRI > 8.08 &
+    scp$count > 1250 & scp$medianCV < 0.73) |
+  (scp$batch == "CBIO754" & scp$log_medianRI > 7.39 &
+    scp$count > 1250 & scp$medianCV < 0.67) |
+  (scp$batch == "GIGA" &
+    scp$count > 1250 & scp$medianCV < 0.455)
+
+# apply filters and store only the high quality measurements
+scp <- subsetByColData(scp, filter_samples) |>
+  dropEmptyAssays()
+scp
+
+# remaining blanks are not useful anymore and can also be discarded.
+scp <- subsetByColData(scp, scp$cell_type != "blank")
+
+# Peptide data assembling
+
+scp <- aggregateFeatures(scp,
+                         i = 1:length(scp),
+                         fcol = "peptide",
+                         name = paste0("peptide_", names(scp)),
+                         fun = colMedians, na.rm = TRUE)
+
+batches <- c("CBIO680", "CBIO681", "CBIO703",
+             "CBIO715", "CBIO725", "CBIO754",
+             "GIGA")
+for (batch in batches) {
+  scp <- joinAssays(scp,
+                    i = grep(paste0("peptide_", batch), names(scp)),
+                    name = paste0("peptides_", batch))
+}
+
+scp
+```
+
+# Peptide processing
+```{r}
+# Filtering of missing peptides
+nrows(scp)[grep("peptides", names(scp))]
+scp <- filterNA(scp,
+       i = grep("peptides", names(scp)),
+       pNA = 0.98)
+nrows(scp)[grep("peptides", names(scp))]
+
+# Normalization
+
+pep_assay_names <- names(scp)[grep("peptides_", names(scp))]
+for (i in seq_along(pep_assay_names)) {
+  scp <- sweep(scp,
+               i = pep_assay_names[i],
+               MARGIN = 2,
+               FUN = "/",
+               STATS = colMedians(assay(scp[[pep_assay_names[i]]]), na.rm = TRUE),
+               name = paste0(pep_assay_names[i], "_norm"))
+}
+
+scp
+
+# Log-transformation
+
+pep_assay_names <- names(scp)[grep("peptides_.*_norm", names(scp))]
+scp <- logTransform(scp,
+                    base = 2,
+                    i = pep_assay_names,
+                    name = paste0(pep_assay_names, "_log"))
+
+# Peptide to protein aggregation
+pep_assay_names <- names(scp)[grep("peptides_.*_norm_log", names(scp))]
+scp <- aggregateFeatures(scp,
+                         i = pep_assay_names,
+                         fcol = "proteins",
+                         fun = colMedians, na.rm = TRUE,
+                         name = sub("peptides", "proteins", pep_assay_names))
+```
+
+# Protein processing
+```{r}
 
 ```
 
