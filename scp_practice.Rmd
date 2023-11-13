@@ -277,8 +277,108 @@ scp <- aggregateFeatures(scp,
 
 # Protein processing
 ```{r}
+# Imputation
+table(is.na(assay(scp[["proteins_CBIO680_norm_log"]])))
+
+prot_assay_names <- names(scp)[grep("proteins.*_norm_log", names(scp))]
+
+scp <- impute(scp,
+       i = prot_assay_names,
+       method = "knn",
+       k = 3, rowmax = 1, colmax= 1,
+       name = sub("norm_log", "imptd", prot_assay_names))
+
+table(is.na(assay(scp[["proteins_CBIO680_imptd"]])))
+any(is.na(assay(scp[["proteins_CBIO680_imptd"]])))
+
+# Batch correction
+for (i in grep("norm_log|imptd", names(scp))) {
+  ## Extract set
+  sce <- getWithColData(scp, names(scp)[i])
+  ## Batch correct assay
+  assay(sce) <-
+    removeBatchEffect(assay(sce), group = sce$cell_type,
+                      batch = sce$run, batch2 = sce$channel)
+  ## Name and add batch-corrected assay
+  scp <- addAssay(scp,
+                  y = sce,
+                  name = sub("_norm_log|mptd", "_batchC", names(scp)[i]))
+  ## Add link between batch corrected and original assay
+  scp <- addAssayLinkOneToOne(scp,
+                              from = names(scp)[i],
+                              to = sub("_norm_log|mptd", "_batchC", names(scp)[i]))
+}
+
+scp
+
+# Dimensionality reduction
+
+# Nonlinear Iterative Partial Least Squares (NIPALS)
+for (i in grep("batchC", names(scp))) {
+  nipals_res <-
+      ## Extract assay
+      assay(scp[[i]]) |>
+      as.data.frame() |>
+      ## Encode missing values
+      mutate_all(~ifelse(is.nan(.), NA, .)) |>
+      ## Transpose
+      t() |>
+      ## PCA
+      pcaMethods::pca(method="nipals", nPcs = 2)
+  reducedDim(scp[[i]], "NIPALS") <- pcaMethods::scores(nipals_res)
+}
+
+head(reducedDim(scp[["proteins_CBIO703_batchC"]], "NIPALS"))
+
+NIPALS_CBIO703 <-
+  plotReducedDim(scp[["proteins_CBIO703_batchC"]],
+                 dimred = "NIPALS",
+                 color_by = "cell_type",
+                 point_alpha = 1)
+NIPALS_CBIO754 <-
+  plotReducedDim(scp[["proteins_CBIO754_batchC"]],
+                 dimred = "NIPALS",
+                 color_by = "cell_type",
+                 point_alpha = 1)
+
+NIPALS_CBIO703 / NIPALS_CBIO754
+
+# Singular value decomposition
+
+for (i in grep("_i_batchC", names(scp))) {
+  scp[[i]] <- runPCA(scp[[i]],
+                     ncomponents = 5,
+                     ntop = Inf,
+                     scale = TRUE,
+                     exprs_values = 1,
+                     name = "SVD")
+}
+
+scp[["proteins_CBIO754_i_batchC"]]
+
+head(reducedDim(scp[["proteins_CBIO754_i_batchC", "SVD"]]))
+
+svd_CBIO703 <-
+  plotReducedDim(scp[["proteins_CBIO703_i_batchC"]],
+                 dimred = "SVD",
+                 color_by = "cell_type",
+                 point_alpha = 1)
+
+svd_CBIO754 <-
+  plotReducedDim(scp[["proteins_CBIO754_i_batchC"]],
+                 dimred = "SVD",
+                 color_by = "cell_type",
+                 point_alpha = 1)
+
+svd_CBIO703 / svd_CBIO754
+```
+
+# Downstream analysis
+```{r}
 
 ```
+
+
 
 
 
