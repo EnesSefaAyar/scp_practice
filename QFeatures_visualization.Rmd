@@ -1,0 +1,92 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Preparing the data
+
+```{r}
+library("QFeatures")
+data(hlpsms)
+hl <- readQFeatures(hlpsms, ecol = 1:10, name = "psms")
+
+hl <- aggregateFeatures(hl, "psms", "Sequence", name = "peptides", fun = colMeans)
+
+hl <- aggregateFeatures(hl, "peptides", "ProteinGroupAccessions", name = "proteins", fun = colMeans)
+
+hl$tag <- c("126", "127N", "127C", "128N", "128C", "129N", "129C",
+            "130N", "130C", "131")
+```
+
+# Exploring the QFeatures hierarchy
+
+```{r}
+plot(hl)
+
+data("feat3")
+plot(feat3)
+
+plot(hl, interactive = TRUE)
+```
+
+# Basic Data Exploration
+
+```{r}
+plot(assay(hl, "proteins")[1, ])
+
+hist(rowData(hl)[["proteins"]]$.n)
+
+table(hl$tag)
+```
+
+# Visualization
+
+```{r}
+library("ggplot2")
+df <- data.frame(rowData(hl)[["proteins"]])
+ggplot(df) +
+    aes(x = .n) +
+    geom_histogram()
+
+library(ComplexHeatmap)
+Heatmap(matrix = assay(hl, "proteins"),
+        show_row_names = FALSE)
+
+ha <- rowAnnotation(markers = rowData(hl)[["proteins"]]$markers)
+Heatmap(matrix = assay(hl, "proteins"),
+        show_row_names = FALSE,
+        left_annotation = ha)
+```
+
+# Advanced data exploration
+
+```{r}
+lf <- longFormat(hl[, , "proteins"],
+                 rowvars = "markers",
+                 colvars = "tag")
+
+ggplot(data.frame(lf)) +
+    aes(x = tag,
+        y = value,
+        group = rowname) +
+    geom_line() +
+    facet_wrap(~ markers, scales = "free_y", ncol = 3)
+
+```
+
+# Interactive Data Exploration
+
+```{r}
+install.packages("shinydashboard")
+library(shinydashboard)
+display(hl)
+```
+
+
+
+
+
+
+
+
