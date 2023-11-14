@@ -1,0 +1,148 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# Reading data as QFeatures
+
+```{r}
+basename(f <- msdata::quant(pattern = "cptac", full.names = TRUE))
+
+names(read.delim(f))
+
+(i <- grep("Intensity\\.", names(read.delim(f))))
+
+library("QFeatures")
+
+cptac <- readQFeatures(f, ecol = i, sep = "\t", name = "peptides", fnames = "Sequence")
+cptac
+```
+
+# Encoding the experimental design
+
+```{r}
+rownames(colData(cptac))
+cptac$group <- rep(c("6A", "6B"), each = 3)
+cptac$sample <- rep(7:9, 2)
+
+colData(cptac)
+```
+
+# Filtering out contaminants and reverse hits
+
+```{r}
+cptac <- cptac |>
+    filterFeatures(~ Reverse == "") |>
+    filterFeatures(~ Potential.contaminant == "")
+```
+
+# Removing up unneeded feature variables
+
+```{r}
+rowDataNames(cptac)
+rowvars <- c("Sequence", "Proteins", "Leading.razor.protein")
+cptac <- selectRowData(cptac, rowvars)
+rowDataNames(cptac)
+```
+
+# Managing missing values
+
+```{r}
+cptac <- zeroIsNA(cptac, i = seq_along(cptac))
+nNA(cptac, i = seq_along(cptac))
+
+cptac <- filterNA(cptac, i = seq_along(cptac), pNA = 0)
+cptac
+```
+
+# Counting unique features
+
+```{r}
+cptac <- countUniqueFeatures(cptac,
+                             i = "peptides",
+                             colDataName = "peptide_counts")
+colData(cptac)
+
+cptac <- countUniqueFeatures(cptac,
+                             i = "peptides",
+                             groupBy = "Proteins",
+                             colDataName = "protein_counts")
+colData(cptac)
+```
+
+# Imputation
+
+```{r}
+?impute
+```
+
+# Data transformation
+
+```{r}
+cptac <- addAssay(cptac,
+                  logTransform(cptac[[1]]),
+                  name = "peptides_log")
+cptac
+
+# Implicitly
+cptac <- logTransform(cptac,
+             i = "peptides",
+             name = "log_peptides")
+
+par(mfrow = c(1, 2))
+limma::plotDensities(assay(cptac[[1]]))
+limma::plotDensities(assay(cptac[[2]]))
+```
+
+# Normalisation
+
+```{r}
+cptac <- addAssay(cptac,
+                  normalize(cptac[["peptides_log"]], method = "center.median"),
+                  name = "peptides_norm")
+cptac
+
+# implicitly
+cptac <- normalize(cptac,
+                   i = "log_peptides",
+                   name = "lognorm_peptides",
+                   method = "center.median")
+
+cptac
+par(mfrow = c(1, 2))
+limma::plotDensities(assay(cptac[["peptides_log"]]))
+limma::plotDensities(assay(cptac[["peptides_norm"]]))
+```
+
+# Feature aggregation
+
+```{r}
+cptac <- aggregateFeatures(cptac, i = "peptides_norm", fcol = "Proteins", name = "proteins")
+cptac
+
+head(assay(cptac[["proteins"]]))
+
+rowData(cptac[["proteins"]])
+
+table(rowData(cptac[["proteins"]])$.n)
+
+library("ggplot2")
+library("dplyr")
+longFormat(cptac["P02787ups|TRFE_HUMAN_UPS", ]) |>
+    as.data.frame() |>
+    mutate(group = ifelse(grepl("A", colname), "A", "B")) |>
+    mutate(sample = sub("Intensity\\.", "", colname)) |>
+    ggplot(aes(x = sample, y = value, colour = rowname, shape = group)) +
+    geom_point() +
+    facet_grid(~ assay)
+```
+
+
+
+
+
+
+
+
