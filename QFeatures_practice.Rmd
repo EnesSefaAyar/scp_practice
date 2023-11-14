@@ -1,0 +1,142 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Import
+```{r}
+library("QFeatures")
+```
+
+# Creating QFeatures Object
+```{r}
+data(hlpsms)
+str(hlpsms)
+
+qf <- readQFeatures(hlpsms, ecol = 1:10, name = "psms")
+?readQFeatures
+qf
+
+# Subset assays
+qf[[1]] # access assay by index
+assay(qf[[1]])
+qf[["psms"]] # access assay by name
+
+head(assay(qf[["psms"]]))
+
+head(rowData(qf[["psms"]]))
+
+colData(qf[["psms"]])
+qf <- aggregateFeatures(qf, "psms", # index or name of assay to aggregate from.
+                        "Sequence", # how to aggregate group on.
+                        name = "peptides", fun = colMeans)
+?aggregateFeatures
+qf
+
+assay(qf[["peptides"]])
+
+qf <- aggregateFeatures(qf, "peptides", 
+                        "ProteinGroupAccessions",
+                        name = "proteins", fun = colMeans)
+qf
+assay(qf[["proteins"]])
+
+colData(qf)
+qf$tag <- c("126", "127N", "127C", "128N", "128C", "129N", "129C",
+            "130N", "130C", "131")
+colData(qf)
+
+```
+
+# Manipulating feature metadata
+
+```{r}
+rowDataNames(qf)
+
+rowData(qf)
+
+rbindRowData(qf, i = c("peptides", "proteins"))
+?rbindRowData
+
+dF <- DataFrame(mean = rowSums(assay(qf[["proteins"]])),
+                sd = rowSds(assay(qf[["proteins"]])))
+dF
+
+rowData(qf) <- List(proteins = dF)
+
+rowData(qf)[["proteins"]]
+```
+
+# Subsetting
+
+```{r}
+stat3 <- qf["P42227-2", , ]
+rowData(stat3[["psms"]])
+
+stat3_df <- data.frame(longFormat(stat3))
+stat3_df$assay <- factor(stat3_df$assay,
+                        levels = c("psms", "peptides", "proteins"))
+library("ggplot2")
+ggplot(data = stat3_df,
+       aes(x = colname,
+           y = value,
+           group = rowname)) +
+    geom_line() + geom_point() +
+    facet_grid(~ assay)
+
+stat <- qf[c("P42227-2", "P42225"), , ]
+
+stat_df <- data.frame(longFormat(stat))
+stat_df$stat3 <- ifelse(stat_df$rowname %in% stat3_df$rowname,
+                        "STAT3", "STAT1")
+stat_df$assay <- factor(stat_df$assay,
+                        levels = c("psms", "peptides", "proteins"))
+
+ggplot(data = stat_df,
+       aes(x = colname,
+           y = value,
+           group = rowname)) +
+    geom_line() + geom_point() +
+    facet_grid(stat3 ~ assay)
+
+qf |>
+    subsetByFeature("P42227-2")
+
+qf |>
+    subsetByFeature(c("P42227-2", "P42225"))
+
+############ !!!!!!!!!!!!! ############
+qf |>
+    subsetByFeature("P42227-2") |>
+    longFormat() |>
+    as.data.frame |>
+    ggplot(aes(x = colname,
+               y = value,
+               group = rowname)) +
+    geom_line() +
+    facet_grid(~ assay)
+############ !!!!!!!!!!!!! ############
+```
+
+# Filtering
+
+```{r}
+mito_filter <- VariableFilter(field = "markers",
+                              value = "Mitochondrion",
+                              condition = "==")
+mito_filter
+
+qval_filter <- VariableFilter(field = "qValue",
+                              value = 0.001,
+                              condition = "<=")
+qval_filter
+
+filterFeatures(qf, mito_filter)
+filterFeatures(qf, qval_filter)
+
+# Formula interface
+filterFeatures(qf, ~ markers == "Mitochondrion")
+filterFeatures(qf, ~ qValue <= 0.001)
+```
+
