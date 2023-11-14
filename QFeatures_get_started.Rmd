@@ -28,6 +28,7 @@ head(assay(qf[["psms"]]))
 head(rowData(qf[["psms"]]))
 
 colData(qf[["psms"]])
+
 qf <- aggregateFeatures(qf, "psms", # index or name of assay to aggregate from.
                         "Sequence", # how to aggregate group on.
                         name = "peptides", fun = colMeans)
@@ -52,9 +53,9 @@ colData(qf)
 # Manipulating feature metadata
 
 ```{r}
-rowDataNames(qf)
+rowDataNames(qf) # Names of Features in different assays 
 
-rowData(qf)
+rowData(qf) # Returns list of assay names (psms, peptides, proteins)
 
 rbindRowData(qf, i = c("peptides", "proteins"))
 ?rbindRowData
@@ -63,7 +64,7 @@ dF <- DataFrame(mean = rowSums(assay(qf[["proteins"]])),
                 sd = rowSds(assay(qf[["proteins"]])))
 dF
 
-rowData(qf) <- List(proteins = dF)
+rowData(qf) <- List(proteins = dF) # Doesn't override, different columns added.
 
 rowData(qf)[["proteins"]]
 ```
@@ -71,12 +72,13 @@ rowData(qf)[["proteins"]]
 # Subsetting
 
 ```{r}
-stat3 <- qf["P42227-2", , ]
-rowData(stat3[["psms"]])
+stat3 <- qf["P42227-2",,]
+stat3
 
 stat3_df <- data.frame(longFormat(stat3))
 stat3_df$assay <- factor(stat3_df$assay,
                         levels = c("psms", "peptides", "proteins"))
+
 library("ggplot2")
 ggplot(data = stat3_df,
        aes(x = colname,
@@ -90,6 +92,9 @@ stat <- qf[c("P42227-2", "P42225"), , ]
 stat_df <- data.frame(longFormat(stat))
 stat_df$stat3 <- ifelse(stat_df$rowname %in% stat3_df$rowname,
                         "STAT3", "STAT1")
+
+?ifelse
+
 stat_df$assay <- factor(stat_df$assay,
                         levels = c("psms", "peptides", "proteins"))
 
@@ -106,17 +111,15 @@ qf |>
 qf |>
     subsetByFeature(c("P42227-2", "P42225"))
 
-############ !!!!!!!!!!!!! ############
 qf |>
     subsetByFeature("P42227-2") |>
     longFormat() |>
-    as.data.frame |>
+    as.data.frame() |>
     ggplot(aes(x = colname,
                y = value,
                group = rowname)) +
     geom_line() +
     facet_grid(~ assay)
-############ !!!!!!!!!!!!! ############
 ```
 
 # Filtering
