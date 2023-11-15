@@ -1,0 +1,94 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Loading a data set
+```{r}
+BiocManager::install("UCLouvain-CBIO/scpdata")
+
+library(scpdata)
+
+scpdata() # List the available datasets
+```
+
+# Loading data using the ExperimentHub interface
+
+```{r}
+eh <- ExperimentHub()
+query(eh, "scpdata") # displays the names of datasets
+
+scp <- eh[["EH3899"]] # load data
+scp
+```
+
+# Loading data using the scpdata functions
+
+```{r}
+# scpdata exports a function for each of the data sets.
+scp <- specht2019v2() # load data by name function
+```
+
+# Data Explore
+
+```{r}
+
+scp[["peptides"]]
+rowData(scp)[["peptides"]]
+colData(scp[["peptides"]])
+
+scp[["proteins"]]
+rowData(scp)[["proteins"]]
+colData(scp[["proteins"]])
+
+plot(scp, interactive = TRUE)
+table(scp$sortday)
+
+dF <- DataFrame(mean = rowSums(assay(scp[["proteins"]])),
+                sd = rowSds(assay(scp[["proteins"]])))
+
+
+rowData(scp) <- List(proteins = dF) 
+rowData(scp)[["proteins"]]
+
+hist(rowData(scp)[["proteins"]]$sd)
+
+
+mymatrix <- assay(scp[["proteins"]])
+View(mymatrix)
+library(ggplot2)
+library(patchwork)
+for (i in 1:nrow(mymatrix)) {
+  for (j in 1:nrow(mymatrix)) {
+    if (i != j) {
+      a <- mymatrix[i,]
+      b <- mymatrix[j,]
+      correlation <- cor(a, b, method = 'pearson')
+      if (abs(correlation) > 0.8) {
+        print(rownames(mymatrix)[i])
+        print(rownames(mymatrix)[j])
+        df <- data.frame(a,b)
+        names(df) <- c("x", "y")
+        ggplot(df, 
+               aes(x = x, y = y)) + 
+          geom_point()+
+          labs(y= rownames(mymatrix)[j], x = rownames(mymatrix)[i])
+        ggsave(paste("~/scp_practice/output_fig/",
+                       rownames(mymatrix)[i],
+                       rownames(mymatrix)[j], ".png", sep="_"))
+        }
+    }
+  }
+}
+
+```
+ 
+
+
+
+
+
+
+
+
