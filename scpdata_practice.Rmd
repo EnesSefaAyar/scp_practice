@@ -82,41 +82,34 @@ for (i in 1:nrow(mymatrix)) {
   }
 }
 
+df <- read.csv("~/scp_practice/forCorrelation.csv", header = TRUE)
+
+df <- df[,-1]
+View(df)
+
+matrix <- data.matrix(df, rownames.force = NA)
+
+cor_matrix <- cor(t(df))
+
 # Correlation matrix 
 mymatrix <- assay(scp[["proteins"]])
 
-cor_matrix <-  cor(t(mymatrix))
+cor_matrix <-  cor(t(mymatrix)) # Calculate correlation by feature (proteins)
 
 install.packages("textshape")
 library(textshape)
 
+# Cluster and order the matrix
 new_cor_matrix <- cluster_matrix(cor_matrix, dim = "both", method = "average")
 
-dim(new_cor_matrix)
-View(new_cor_matrix)
-
-heatmap(new_cor_matrix)
-
-library(ggplot2)
-
-new_cor_matrix %>% 
-  tidy_matrix('car', 'var') %>%
-  ggplot(aes(var, car, fill = value)) +
-         geom_tile() +
-          scale_fill_gradient(low="yellow", high="red") +
-         theme(
-             axis.text.y = element_text(size = 8)   ,
-             axis.text.x = element_text(
-                 size = 8, 
-                 hjust = 1, 
-                 vjust = 1, 
-                 angle = 45
-             ),   
-             legend.position = 'bottom',
-             legend.key.height = grid::unit(.1, 'cm'),
-             legend.key.width = grid::unit(.5, 'cm')               
-         ) +
-         labs(subtitle = "With Clustering")
+# Plot matrix
+pheatmap(new_cor_matrix,
+         color = colorRampPalette(c("#4d72af","white","#c44e53"))(101),
+         breaks = seq(from = -1, to = 1, length.out = 101),
+         border_color = NA,legend=F,show_colnames = F,show_rownames = F,
+         cluster_rows = F, cluster_cols = F,
+         cellwidth = 1, cellheight = 1,
+         fontfamily='sans',fontsize=10)
 
 ```
  
