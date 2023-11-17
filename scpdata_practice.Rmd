@@ -4,18 +4,27 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Loading a data set
+# Install packages
 ```{r}
 BiocManager::install("UCLouvain-CBIO/scpdata")
+install.packages("textshape")
+install.packages("pheatmap")
+```
 
+# Load packages
+
+```{r}
 library(scpdata)
-
-scpdata() # List the available datasets
+library(ggplot2)
+library(patchwork)
+library(pheatmap)
+library(textshape)
 ```
 
 # Loading data using the ExperimentHub interface
 
 ```{r}
+scpdata() # List the available datasets
 eh <- ExperimentHub()
 query(eh, "scpdata") # displays the names of datasets
 
@@ -33,7 +42,6 @@ scp <- specht2019v2() # load data by name function
 # Data Explore
 
 ```{r}
-
 scp[["peptides"]]
 rowData(scp)[["peptides"]]
 colData(scp[["peptides"]])
@@ -45,9 +53,9 @@ colData(scp[["proteins"]])
 plot(scp, interactive = TRUE)
 table(scp$sortday)
 
+# Update metadata
 dF <- DataFrame(mean = rowSums(assay(scp[["proteins"]])),
                 sd = rowSds(assay(scp[["proteins"]])))
-
 
 rowData(scp) <- List(proteins = dF) 
 rowData(scp)[["proteins"]]
@@ -56,9 +64,6 @@ hist(rowData(scp)[["proteins"]]$sd)
 
 # Plot scatter plots of correlations
 mymatrix <- assay(scp[["proteins"]])
-View(mymatrix)
-library(ggplot2)
-library(patchwork)
 for (i in 1:nrow(mymatrix)) {
   for (j in 1:nrow(mymatrix)) {
     if (i != j) {
@@ -81,38 +86,30 @@ for (i in 1:nrow(mymatrix)) {
     }
   }
 }
-
-df <- read.csv("~/scp_practice/forCorrelation.csv", header = TRUE)
-
-df <- df[,-1]
-View(df)
-
-matrix <- data.matrix(df, rownames.force = NA)
-
-cor_matrix <- cor(t(df))
+```
 
 # Correlation matrix 
+
+```{r}
 mymatrix <- assay(scp[["proteins"]])
 
-cor_matrix <-  cor(t(mymatrix)) # Calculate correlation by feature (proteins)
+# Calculate correlations
+cor_df <- cor(t(mymatrix), method = "pearson")
 
-install.packages("textshape")
-library(textshape)
+# Cluster and order the data frame
+ordered_cor_df <- cluster_matrix(cor_df, dim = "both", method = "average")
 
-# Cluster and order the matrix
-new_cor_matrix <- cluster_matrix(cor_matrix, dim = "both", method = "average")
-
-# Plot matrix
-pheatmap(new_cor_matrix,
-         color = colorRampPalette(c("#4d72af","white","#c44e53"))(101),
+# Plot the heat-map
+pheatmap(ordered_cor_df,
+         color = colorRampPalette(c("#4d72af", "white", "#c44e53"))(101),
          breaks = seq(from = -1, to = 1, length.out = 101),
-         border_color = NA,legend=F,show_colnames = F,show_rownames = F,
-         cluster_rows = F, cluster_cols = F,
+         border_color = NA,legend = FALSE, show_colnames = FALSE, 
+         show_rownames = FALSE,
+         cluster_rows = FALSE, cluster_cols = FALSE,
          cellwidth = 1, cellheight = 1,
-         fontfamily='sans',fontsize=10)
-
+         fontfamily = 'sans',fontsize = 10)
 ```
- 
+
 
 
 
